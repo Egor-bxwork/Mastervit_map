@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <title>Карта с точками</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <!-- MarkerCluster CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css" />
+  <!-- Date Picker CSS (flatpickr) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  <!-- noUiSlider CSS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/nouislider@15.7.1/dist/nouislider.min.css">
+
+  <style>
+    body { margin: 0; }
+    #controls {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 1000;
+      background: white;
+      padding: 10px;
+      border-radius: 8px;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+      font-family: Arial, sans-serif;
+      font-size: 14px;
+    }
+    #map {
+      width: 100%;
+      height: 100vh;
+    }
+    .slider-label {
+      margin-top: 10px;
+    }
+    #sumSlider {
+      margin-top: 5px;
+    }
+  </style>
+</head>
+<body>
+  <div id="controls">
+    <h4>Фильтры</h4>
+    <div>
+      <label for="fenceTypeSelect">Вид Забора:</label>
+      <div id="fenceTypeSelect"></div>
+    </div>
+    <div class="slider-label">
+      <label for="datePicker">Дата установки:</label>
+      <input type="text" id="datePicker" placeholder="Выберите дату или диапазон" />
+    </div>
+    <div class="slider-label">
+      <label>Сумма:</label>
+      <div id="sumSlider"></div>
+      <div id="sumValues"></div>
+    </div>
+    <button id="applyFilters" style="margin-top:10px;">Применить фильтры</button>
+    <button id="resetFilters" style="margin-top:5px;">Сбросить фильтры</button>
+  </div>
+
+  <div id="map"></div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <!-- MarkerCluster JS -->
+  <script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
+  <!-- flatpickr JS -->
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ru.js"></script>
+  <!-- noUiSlider JS -->
+  <script src="https://cdn.jsdelivr.net/npm/nouislider@15.7.1/dist/nouislider.min.js"></script>
+
+  <script>
+    let geojsonData;
+    let markers = L.markerClusterGroup();
+    const map = L.map('map').setView([55.7, 37.5], 9);
+
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; <a href="https://carto.com/">CARTO</a>',
+      subdomains: 'abcd',
+      maxZoom: 19
+    }).addTo(map);
+fetch('real2.geojson')
+  .then(res => res.json())
+  .then(data => {
+    geojsonData = data;
+
+    // ← вот сюда вставь блок выше
+    geojsonData.features.forEach(f => {
+      let coords = f.geometry.coordinates;
+
+      if (typeof coords === "string") {
+        // Удалим мусор
+        coords = coords.replace(/[^\d.,\s-]/g, '');
+
+        const parts = coords.split(',').map(s => parseFloat(s.trim()));
+
+        // Проверим, что две координаты и они в пределах допустимого диапазона
+        if (
+          parts.length === 2 &&
+          !isNaN(parts[0]) &&
+          !isNaN(parts[1]) &&
+          parts[0] >= -90 && parts[0] <= 90 &&
+          parts[1] >= -180 && parts[1] <= 180
+        ) {
+          f.geometry.coordinates = [parts[1], parts[0]];
+        } else {
+          // некорректные координаты — удаляем геометрию
+          f.geometry = null;
+        }
+      }
+    });
+
+
+    initFilters();
+    drawMarkers(geojsonData.features);
+  });
+
+
+    function initFilters() {
+      initFenceTypeFilter();
+      initDatePicker();
+      initSumSlider();
+
+      document.getElementById("applyFilters").addEventListener("click", applyFilters);
+      document.getElementById("resetFilters").addEventListener("click", resetFilters);
+    }
+
+    function initFenceTypeFilter() {
+      const fenceTypes = new Set();
+      geojsonData.features.forEach(f => {
+        const type = f.properties["Вид Забора"];
+        if (type) fenceTypes.add(type);
+      });
+
+      const container = document.getElementById("fenceTypeSelect");
+      fenceTypes.forEach(type => {
+        const id = `chk_${type.replace(/\s+/g, '_')}`;
+        const label = document.createElement('label');
+        label.innerHTML = `<input type="checkbox" id="${id}" value="${type}"> ${type}<br>`;
+        container.appendChild(label);
+      });
+    }
+
+    function initDatePicker() {
+      flatpickr("#datePicker", {
+        mode: "range",
+        dateFormat: "d.m.Y",
+        locale: "ru"
+      });
+    }
+
+    let minSum = 0, maxSum = 0;
+    function initSumSlider() {
+      const sums = geojsonData.features.map(f => parseFloat(f.properties["Сумма"])).filter(Boolean);
+      minSum = Math.min(...sums);
+      maxSum = Math.max(...sums);
+
+      const slider = document.getElementById('sumSlider');
+      noUiSlider.create(slider, {
+        start: [minSum, maxSum],
+        connect: true,
+        step: 1000,
+        range: {
+          'min': minSum,
+          'max': maxSum
+        },
+        tooltips: true,
+        format: {
+          to: value => Math.round(value),
+          from: value => Number(value)
+        }
+      });
+
+      const sumValues = document.getElementById('sumValues');
+      slider.noUiSlider.on('update', (values) => {
+        sumValues.textContent = `От ${Math.round(values[0])} руб. до ${Math.round(values[1])} руб.`;
+      });
+    }
+
+    function drawMarkers(features) {
+      markers.clearLayers();
+      const geoJsonLayer = L.geoJSON(features, {
+        onEachFeature: function (feature, layer) {
+          const props = feature.properties;
+          const popupContent = `
+            <strong>${props.name}</strong><br/>
+            <b>ID:</b> ${props.id}<br/>
+            <b>Номер:</b> ${props.Номер}<br/>
+            <b>Сумма:</b> ${props.Сумма} руб.<br/>
+            <b>Стоимость Материала:</b> ${props["Стоимость Материала"]} руб.<br/>
+            <b>Стоимость Услуги:</b> ${props["Стоимость Услуги"]} руб.<br/>
+            <b>Дата Установки:</b> ${props["Дата Установки"]}<br/>
+            <b>Проблемный:</b> ${props.Проблемный ? "Да" : "Нет"}<br/>
+            <b>Адрес Доставки:</b> ${props["Адрес Доставки"]}<br/>
+            <b>Номер Подразделения:</b> ${props["Номер Подразделения"]}<br/>
+            <b>Вид Забора:</b> ${props["Вид Забора"]}<br/>
+          `;
+          layer.bindPopup(popupContent);
+        }
+      });
+      markers.addLayer(geoJsonLayer);
+      map.addLayer(markers);
+      if (features.length > 0) {
+        map.fitBounds(markers.getBounds());
+      }
+    }
+
+    function applyFilters() {
+      const selectedTypes = Array.from(document.querySelectorAll("#fenceTypeSelect input:checked"))
+                                .map(cb => cb.value);
+
+      const dateRange = document.getElementById("datePicker").value;
+      let startDate = null, endDate = null;
+      if (dateRange) {
+        const dates = dateRange.split(" до ");
+        if (dates.length === 1) {
+          startDate = endDate = parseDate(dates[0]);
+        } else if (dates.length === 2) {
+          startDate = parseDate(dates[0]);
+          endDate = parseDate(dates[1]);
+        }
+      }
+
+      const sumSlider = document.getElementById('sumSlider').noUiSlider.get();
+      const minSelectedSum = parseFloat(sumSlider[0]);
+      const maxSelectedSum = parseFloat(sumSlider[1]);
+
+      const filtered = geojsonData.features.filter(f => {
+        const props = f.properties;
+
+        // Вид Забора
+        if (selectedTypes.length > 0 && !selectedTypes.includes(props["Вид Забора"])) {
+          return false;
+        }
+
+        // Дата
+        if (startDate) {
+          const installDate = parseDate(props["Дата Установки"]);
+          if (!installDate) return false;
+          if (installDate < startDate) return false;
+          if (endDate && installDate > endDate) return false;
+        }
+
+        // Сумма
+        const sum = parseFloat(props["Сумма"]);
+        if (sum < minSelectedSum || sum > maxSelectedSum) {
+          return false;
+        }
+
+        return true;
+      });
+
+      drawMarkers(filtered);
+    }
+
+    function resetFilters() {
+      document.querySelectorAll("#fenceTypeSelect input").forEach(cb => cb.checked = false);
+      document.getElementById("datePicker")._flatpickr.clear();
+      document.getElementById("sumSlider").noUiSlider.set([minSum, maxSum]);
+      drawMarkers(geojsonData.features);
+    }
+
+    function parseDate(dateStr) {
+      if (!dateStr) return null;
+      const parts = dateStr.split(".");
+      if (parts.length !== 3) return null;
+      return new Date(parts[2], parts[1] - 1, parts[0]);
+    }
+  </script>
+</body>
+</html>
