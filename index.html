@@ -85,7 +85,7 @@
       subdomains: 'abcd',
       maxZoom: 19
     }).addTo(map);
-fetch('real2.geojson')
+fetch('заказы08.2025.json')
   .then(res => res.json())
   .then(data => {
     geojsonData = data;
@@ -95,12 +95,9 @@ fetch('real2.geojson')
       let coords = f.geometry.coordinates;
 
       if (typeof coords === "string") {
-        // Удалим мусор
+        // Старый формат: "55.645870, 36.560000"
         coords = coords.replace(/[^\d.,\s-]/g, '');
-
         const parts = coords.split(',').map(s => parseFloat(s.trim()));
-
-        // Проверим, что две координаты и они в пределах допустимого диапазона
         if (
           parts.length === 2 &&
           !isNaN(parts[0]) &&
@@ -110,9 +107,23 @@ fetch('real2.geojson')
         ) {
           f.geometry.coordinates = [parts[1], parts[0]];
         } else {
-          // некорректные координаты — удаляем геометрию
           f.geometry = null;
         }
+      } else if (Array.isArray(coords) && coords.length === 2) {
+        // Новый формат: [55.645870, 36.560000]
+        if (
+          !isNaN(coords[0]) &&
+          !isNaN(coords[1]) &&
+          coords[0] >= -90 && coords[0] <= 90 &&
+          coords[1] >= -180 && coords[1] <= 180
+        ) {
+          // Leaflet ждет [lat, lng], GeoJSON — [lng, lat]
+          f.geometry.coordinates = [coords[1], coords[0]];
+        } else {
+          f.geometry = null;
+        }
+      } else {
+        f.geometry = null;
       }
     });
 
