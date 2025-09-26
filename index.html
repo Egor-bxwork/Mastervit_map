@@ -51,6 +51,45 @@
       <div id="fenceTypeSelect"></div>
     </div>
     <div class="slider-label">
+      <label for="modelRangeSelect">Модельный ряд:</label>
+      <div id="modelRangeSelect"></div>
+    </div>
+    <div class="slider-label">
+      <label for="colorSelect">Цвет:</label>
+      <div id="colorSelect"></div>
+    </div>
+    <div class="slider-label">
+      <label for="coatingSelect">Покрытие:</label>
+      <div id="coatingSelect"></div>
+    </div>
+    <div class="slider-label">
+      <label>Метраж:</label>
+      <div id="meterSlider"></div>
+      <div style="margin-top:6px;display:flex;gap:6px;align-items:center;">
+        <input id="meterMinValue" type="text" readonly style="width:90px;" placeholder="от" />
+        <input id="meterMaxValue" type="text" readonly style="width:90px;" placeholder="до" />
+      </div>
+    </div>
+    <div class="slider-label">
+      <label for="directionSelect">Направление:</label>
+      <div id="directionSelect"></div>
+    </div>
+    <div class="slider-label">
+      <label for="loyaltySelect">Лояльность:</label>
+      <div id="loyaltySelect"></div>
+    </div>
+    <div class="slider-label">
+      <label for="sourceSelect">Источник обращения:</label>
+      <div id="sourceSelect"></div>
+    </div>
+    <div class="slider-label">
+      <label for="monolithSelect">Монолит:</label>
+      <div id="monolithSelect"></div>
+    </div>
+    <div class="slider-label">
+      <label><input type="checkbox" id="hideUnfiltered" /> Скрыть неотфильтрованные точки</label>
+    </div>
+    <div class="slider-label">
       <label for="datePicker">Дата установки:</label>
       <input type="text" id="datePicker" placeholder="Выберите дату или диапазон" />
     </div>
@@ -139,8 +178,16 @@ fetch('full.json')
 
     function initFilters() {
       initFenceTypeFilter();
+      initModelRangeFilter();
+      initGenericCheckboxFilter("Цвет", "colorSelect");
+      initGenericCheckboxFilter("Покрытие", "coatingSelect");
+      initGenericCheckboxFilter("Направление", "directionSelect");
+      initGenericCheckboxFilter("Лояльность", "loyaltySelect");
+      initGenericCheckboxFilter("ИсточникОбращения", "sourceSelect");
+      initGenericCheckboxFilter("Монолит", "monolithSelect");
       initDatePicker();
       initSumSlider();
+      initMeterSlider();
 
       document.getElementById("applyFilters").addEventListener("click", applyFilters);
       document.getElementById("resetFilters").addEventListener("click", resetFilters);
@@ -158,6 +205,36 @@ fetch('full.json')
         const id = `chk_${type.replace(/\s+/g, '_')}`;
         const label = document.createElement('label');
         label.innerHTML = `<input type="checkbox" id="${id}" value="${type}"> ${type}<br>`;
+        container.appendChild(label);
+      });
+    }
+
+    function initModelRangeFilter() {
+      const models = new Set();
+      geojsonData.features.forEach(f => {
+        const v = f.properties["МодельныйРяд"];
+        if (v) models.add(v);
+      });
+      const container = document.getElementById("modelRangeSelect");
+      models.forEach(v => {
+        const id = `chk_model_${String(v).replace(/\s+/g, '_')}`;
+        const label = document.createElement('label');
+        label.innerHTML = `<input type="checkbox" id="${id}" value="${v}"> ${v}<br>`;
+        container.appendChild(label);
+      });
+    }
+
+    function initGenericCheckboxFilter(propName, containerId) {
+      const set = new Set();
+      geojsonData.features.forEach(f => {
+        const v = f.properties[propName];
+        if (v !== undefined && v !== null && String(v).trim() !== "") set.add(v);
+      });
+      const container = document.getElementById(containerId);
+      set.forEach(v => {
+        const id = `chk_${containerId}_${String(v).replace(/\s+/g, '_')}`;
+        const label = document.createElement('label');
+        label.innerHTML = `<input type="checkbox" id="${id}" value="${v}"> ${v}<br>`;
         container.appendChild(label);
       });
     }
@@ -198,6 +275,42 @@ fetch('full.json')
       });
     }
 
+    let minMeter = 0, maxMeter = 0;
+    function initMeterSlider() {
+      const meters = geojsonData.features
+        .map(f => parseFloat(f.properties["Метраж"]))
+        .filter(v => !isNaN(v));
+      if (meters.length === 0) {
+        minMeter = 0; maxMeter = 0;
+        const minInput = document.getElementById('meterMinValue');
+        const maxInput = document.getElementById('meterMaxValue');
+        if (minInput) minInput.value = '';
+        if (maxInput) maxInput.value = '';
+        return;
+      }
+      minMeter = Math.min(...meters);
+      maxMeter = Math.max(...meters);
+
+      const slider = document.getElementById('meterSlider');
+      noUiSlider.create(slider, {
+        start: [minMeter, maxMeter],
+        connect: true,
+        step: 1,
+        range: { 'min': minMeter, 'max': maxMeter },
+        tooltips: true,
+        format: {
+          to: value => Math.round(value),
+          from: value => Number(value)
+        }
+      });
+      const minInput = document.getElementById('meterMinValue');
+      const maxInput = document.getElementById('meterMaxValue');
+      slider.noUiSlider.on('update', (values) => {
+        if (minInput) minInput.value = `${Math.round(values[0])}`;
+        if (maxInput) maxInput.value = `${Math.round(values[1])}`;
+      });
+    }
+
     // Функция для генерации цветов для выбранных типов забора
     function generateTypeColors(types) {
       const colors = {};
@@ -210,8 +323,14 @@ fetch('full.json')
     }
 
     function applyFilters() {
-      const selectedTypes = Array.from(document.querySelectorAll("#fenceTypeSelect input:checked"))
-                                .map(cb => cb.value);
+      const selectedTypes = Array.from(document.querySelectorAll("#fenceTypeSelect input:checked")).map(cb => cb.value);
+      const selectedModels = Array.from(document.querySelectorAll("#modelRangeSelect input:checked")).map(cb => cb.value);
+      const selectedColors = Array.from(document.querySelectorAll("#colorSelect input:checked")).map(cb => cb.value);
+      const selectedCoatings = Array.from(document.querySelectorAll("#coatingSelect input:checked")).map(cb => cb.value);
+      const selectedDirections = Array.from(document.querySelectorAll("#directionSelect input:checked")).map(cb => cb.value);
+      const selectedLoyalties = Array.from(document.querySelectorAll("#loyaltySelect input:checked")).map(cb => cb.value);
+      const selectedSources = Array.from(document.querySelectorAll("#sourceSelect input:checked")).map(cb => cb.value);
+      const selectedMonoliths = Array.from(document.querySelectorAll("#monolithSelect input:checked")).map(cb => cb.value);
 
       const dateRange = document.getElementById("datePicker").value;
       let startDate = null, endDate = null;
@@ -229,48 +348,67 @@ fetch('full.json')
       const minSelectedSum = parseFloat(sumSlider[0]);
       const maxSelectedSum = parseFloat(sumSlider[1]);
 
-      // Фильтруем только по дате и сумме
+      let minSelectedMeter = null, maxSelectedMeter = null;
+      const meterSliderEl = document.getElementById('meterSlider');
+      if (meterSliderEl && meterSliderEl.noUiSlider) {
+        const meterRange = meterSliderEl.noUiSlider.get();
+        minSelectedMeter = parseFloat(meterRange[0]);
+        maxSelectedMeter = parseFloat(meterRange[1]);
+      }
+
       const filtered = geojsonData.features.filter(f => {
         const props = f.properties;
 
-        // Дата
         if (startDate) {
-          const installDate = parseDate(props["Дата Установки"]);
+          const installDate = parseDate(props["ДатаУстановки"]);
           if (!installDate) return false;
           if (installDate < startDate) return false;
           if (endDate && installDate > endDate) return false;
         }
 
-        // Сумма
         const sum = parseFloat(props["Сумма"]);
-        if (sum < minSelectedSum || sum > maxSelectedSum) {
-          return false;
+        if (sum < minSelectedSum || sum > maxSelectedSum) return false;
+
+        if (minSelectedMeter !== null && maxSelectedMeter !== null) {
+          const meter = parseFloat(props["Метраж"]);
+          if (isNaN(meter) || meter < minSelectedMeter || meter > maxSelectedMeter) return false;
         }
+
+        if (selectedModels.length > 0 && !selectedModels.includes(props["МодельныйРяд"])) return false;
+        if (selectedColors.length > 0 && !selectedColors.includes(props["Цвет"])) return false;
+        if (selectedCoatings.length > 0 && !selectedCoatings.includes(props["Покрытие"])) return false;
+        if (selectedDirections.length > 0 && !selectedDirections.includes(props["Направление"])) return false;
+        if (selectedLoyalties.length > 0 && !selectedLoyalties.includes(props["Лояльность"])) return false;
+        if (selectedSources.length > 0 && !selectedSources.includes(props["ИсточникОбращения"])) return false;
+        if (selectedMonoliths.length > 0 && !selectedMonoliths.includes(props["Монолит"])) return false;
 
         return true;
       });
 
-      // Генерируем цвета для выбранных типов, если фильтр активен
       let typeColors = null;
-      if (selectedTypes.length > 0) {
-        typeColors = generateTypeColors(selectedTypes);
+      if (selectedTypes.length > 0) typeColors = generateTypeColors(selectedTypes);
+
+      const hideUnfiltered = document.getElementById('hideUnfiltered') && document.getElementById('hideUnfiltered').checked;
+      if (hideUnfiltered) {
+        drawMarkers(filtered, typeColors, selectedTypes);
+      } else {
+        const filteredIdSet = new Set(filtered.map(f => f.properties && f.properties.id));
+        drawMarkers(geojsonData.features, typeColors, selectedTypes, filteredIdSet);
       }
-      drawMarkers(filtered, typeColors, selectedTypes);
     }
 
-    // drawMarkers теперь принимает selectedTypes
-    function drawMarkers(features, typeColors = null, selectedTypes = []) {
+    // drawMarkers теперь принимает selectedTypes и опционально filteredIdSet
+    function drawMarkers(features, typeColors = null, selectedTypes = [], filteredIdSet = null) {
       markers.clearLayers();
       const geoJsonLayer = L.geoJSON(features, {
         pointToLayer: function (feature, latlng) {
           let color = '#3388ff'; // стандартный цвет Leaflet
-          if (
-            typeColors &&
-            feature.properties["ВидЗабора"] &&
-            selectedTypes.includes(feature.properties["ВидЗабора"]) &&
-            typeColors[feature.properties["ВидЗабора"]]
-          ) {
-            color = typeColors[feature.properties["ВидЗабора"]];
+          const fenceType = feature.properties["ВидЗабора"];
+          const isFiltered = filteredIdSet ? filteredIdSet.has(feature.properties && feature.properties.id) : true;
+          if (isFiltered && typeColors && fenceType && selectedTypes.includes(fenceType) && typeColors[fenceType]) {
+            color = typeColors[fenceType];
+          } else if (filteredIdSet && !isFiltered) {
+            color = '#3388ff';
           }
           // divIcon с цветной точкой
           return L.divIcon ? L.marker(latlng, {
@@ -283,17 +421,19 @@ fetch('full.json')
         onEachFeature: function (feature, layer) {
           const props = feature.properties;
           const popupContent = `
-            <strong>${props.name}</strong><br/>
-            <b>ID:</b> ${props.id}<br/>
-            <b>Номер:</b> ${props.Номер}<br/>
-            <b>Сумма:</b> ${props.Сумма} руб.<br/>
-            <b>Стоимость Материала:</b> ${props["Стоимость Материала"]} руб.<br/>
-            <b>Стоимость Услуги:</b> ${props["Стоимость Услуги"]} руб.<br/>
-            <b>Дата Установки:</b> ${props["Дата Установки"]}<br/>
-            <b>Проблемный:</b> ${props.Проблемный ? "Да" : "Нет"}<br/>
-            <b>Адрес Доставки:</b> ${props["Адрес Доставки"]}<br/>
-            <b>Номер Подразделения:</b> ${props["Номер Подразделения"]}<br/>
-            <b>Вид Забора:</b> ${props["ВидЗабора"]}<br/>
+            <b>Номер заказа:</b> ${props["Номер"] || ''}<br/>
+            <b>Бригада:</b> ${props["Бригада"] || ''}<br/>
+            <b>Дата монтажа:</b> ${props["ДатаУстановки"] || ''}<br/>
+            <b>Адрес:</b> ${props["АдресДоставки"] || ''}<br/>
+            <b>Лояльность:</b> ${props["Лояльность"] || ''}<br/>
+            <b>Источник:</b> ${props["ИсточникОбращения"] || ''}<br/>
+            <hr/>
+            <b>Тип:</b> ${props["ВидЗабора"] || ''}<br/>
+            <b>Модель:</b> ${props["МодельныйРяд"] || ''}<br/>
+            <b>Стоимость:</b> ${props["Сумма"] ? props["Сумма"] + ' руб.' : ''}<br/>
+            <b>Цвет:</b> ${props["Цвет"] || ''}<br/>
+            <b>Покрытие:</b> ${props["Покрытие"] || ''}<br/>
+            <b>Метраж:</b> ${props["Метраж"] || ''}
           `;
           layer.bindPopup(popupContent);
         }
@@ -308,8 +448,18 @@ fetch('full.json')
     // В resetFilters возвращаем стандартный цвет
     function resetFilters() {
       document.querySelectorAll("#fenceTypeSelect input").forEach(cb => cb.checked = false);
+      ["modelRangeSelect","colorSelect","coatingSelect","directionSelect","loyaltySelect","sourceSelect","monolithSelect"].forEach(id => {
+        document.querySelectorAll(`#${id} input`).forEach(cb => cb.checked = false);
+      });
       document.getElementById("datePicker")._flatpickr.clear();
       document.getElementById("sumSlider").noUiSlider.set([minSum, maxSum]);
+      const meterSliderEl = document.getElementById('meterSlider');
+      if (meterSliderEl && meterSliderEl.noUiSlider) {
+        const range = meterSliderEl.noUiSlider.options.range;
+        meterSliderEl.noUiSlider.set([range.min, range.max]);
+      }
+      const hideEl = document.getElementById('hideUnfiltered');
+      if (hideEl) hideEl.checked = false;
       drawMarkers(geojsonData.features, null, []);
     }
 
