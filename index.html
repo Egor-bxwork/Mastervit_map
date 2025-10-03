@@ -454,6 +454,9 @@ fetch('full.json')
           if (isNaN(meter) || meter < minSelectedMeter || meter > maxSelectedMeter) return false;
         }
 
+        // Учитываем выбранные виды забора
+        if (selectedTypes.length > 0 && !selectedTypes.includes(props["ВидЗабора"])) return false;
+
         if (selectedModels.length > 0 && !selectedModels.includes(props["МодельныйРяд"])) return false;
         if (selectedColors.length > 0 && !selectedColors.includes(props["Цвет"])) return false;
         if (selectedCoatings.length > 0 && !selectedCoatings.includes(props["Покрытие"])) return false;
